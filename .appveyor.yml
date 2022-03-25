@@ -1,5 +1,5 @@
 version: '2.0.5-git-{build}'
-image: 'Visual Studio 2017'
+image: 'Visual Studio 2019'
 clone_depth: 1
 
 # Build configuration
@@ -9,9 +9,9 @@ configuration:
 # Environment
 environment:
   NINJA_URL: https://github.com/ninja-build/ninja/releases/download/v1.9.0/ninja-win.zip
-  VSVARSALLPATH: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvarsall.bat'
+  VSVARSALLPATH: 'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat'
   ARCH: x64
-  PYTHON: 'C:\Python36-x64'
+  PYTHON: 'C:\Python37-x64'
   PACKAGE_NAME: cutter-git-x64.Windows
 
 install:
@@ -41,8 +41,8 @@ build_script:
   - cmd: "cmake
        -DCMAKE_BUILD_TYPE=Release
        -DCUTTER_USE_BUNDLED_RIZIN=ON
-       -DCUTTER_ENABLE_PYTHON=ON
-       -DCUTTER_ENABLE_PYTHON_BINDINGS=ON
+       -DCUTTER_ENABLE_PYTHON=OFF
+       -DCUTTER_ENABLE_PYTHON_BINDINGS=OFF
        -DCUTTER_ENABLE_PACKAGING=ON
        -DCUTTER_PACKAGE_DEPENDENCIES=ON
        -DCUTTER_PACKAGE_RZ_GHIDRA=ON
