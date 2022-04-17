@@ -77,17 +77,12 @@ bool IOModesController::prepareForWriting()
 
 bool IOModesController::allChangesComitted()
 {
-    // Get a list of available write changes
-    QJsonArray changes = Core()->cmdj("wcj").array();
-
-    // Check if there is a change which isn't written to the file
-    for (const QJsonValue &value : changes) {
-        QJsonObject changeObject = value.toObject();
-        if (!changeObject["written"].toBool()) {
+    RzCoreLocked core(Core());
+    for (auto c : CutterPVector<RzIOCache>(&core->io->cache)) {
+        if (!c->written) {
             return false;
         }
     }
-
     return true;
 }
 
@@ -105,7 +100,7 @@ bool IOModesController::askCommitUnsavedChanges()
         if (ret == QMessageBox::Save) {
             Core()->commitWriteCache();
         } else if (ret == QMessageBox::Discard) {
-            Core()->cmdRaw("wcr");
+            Core()->resetWriteCache();
             emit Core()->refreshCodeViews();
         } else if (ret == QMessageBox::Cancel) {
             return false;

@@ -2,6 +2,7 @@
 #include "Cutter.h"
 #include "Configuration.h"
 #include "dialogs/WriteCommandsDialogs.h"
+#include "dialogs/CommentsDialog.h"
 
 #include <QPainter>
 #include <QPaintEvent>
@@ -120,6 +121,19 @@ HexWidget::HexWidget(QWidget *parent)
     connect(actionCopyAddress, &QAction::triggered, this, &HexWidget::copyAddress);
     addAction(actionCopyAddress);
 
+    // Add comment option
+    actionComment = new QAction(tr("Add Comment"), this);
+    actionComment->setShortcutContext(Qt::ShortcutContext::WidgetWithChildrenShortcut);
+    actionComment->setShortcut(Qt::Key_Semicolon);
+    connect(actionComment, &QAction::triggered, this, &HexWidget::on_actionAddComment_triggered);
+    addAction(actionComment);
+
+    // delete comment option
+    actionDeleteComment = new QAction(tr("Delete Comment"), this);
+    actionDeleteComment->setShortcutContext(Qt::ShortcutContext::WidgetWithChildrenShortcut);
+    connect(actionDeleteComment, &QAction::triggered, this, &HexWidget::on_actionDeleteComment_triggered);
+    addAction(actionDeleteComment);
+
     actionSelectRange = new QAction(tr("Select range"), this);
     connect(actionSelectRange, &QAction::triggered, this,
             [this]() { rangeDialog.open(cursor.address); });
@@ -147,7 +161,11 @@ HexWidget::HexWidget(QWidget *parent)
     connect(actionWrite64, &QAction::triggered, this, &HexWidget::w_write64);
     actionsWriteString.append(actionWrite64);
 
-    actionsWriteOther.reserve(4);
+    actionsWriteOther.reserve(5);
+    QAction *actionWriteBytes = new QAction(tr("Write hex bytes"), this);
+    connect(actionWriteBytes, &QAction::triggered, this, &HexWidget::w_writeBytes);
+    actionsWriteOther.append(actionWriteBytes);
+
     QAction *actionWriteZeros = new QAction(tr("Write zeros"), this);
     connect(actionWriteZeros, &QAction::triggered, this, &HexWidget::w_writeZeros);
     actionsWriteOther.append(actionWriteZeros);
@@ -616,6 +634,16 @@ void HexWidget::contextMenuEvent(QContextMenuEvent *event)
         actionCopyAddress->setDisabled(disable);
     };
 
+    QString comment = Core()->getCommentAt(cursor.address);
+
+    if (comment.isNull() || comment.isEmpty()) {
+        actionDeleteComment->setVisible(false);
+        actionComment->setText(tr("Add Comment"));
+    } else {
+        actionDeleteComment->setVisible(true);
+        actionComment->setText(tr("Edit Comment"));
+    }
+
     QMenu *menu = new QMenu();
     QMenu *sizeMenu = menu->addMenu(tr("Item size:"));
     sizeMenu->addActions(actionsItemSize);
@@ -685,6 +713,20 @@ void HexWidget::copyAddress()
     clipboard->setText(RzAddressString(addr));
 }
 
+//slot for add comment action
+void HexWidget::on_actionAddComment_triggered()
+{
+    uint64_t addr = cursor.address;
+    CommentsDialog::addOrEditComment(addr, this);
+}
+
+//slot for deleting comment action
+void HexWidget::on_actionDeleteComment_triggered()
+{
+    uint64_t addr = cursor.address;
+    Core()->delComment(addr);
+}
+
 void HexWidget::onRangeDialogAccepted()
 {
     if (rangeDialog.empty()) {
@@ -722,11 +764,47 @@ void HexWidget::w_increaseDecrease()
     }
     int64_t value = (int64_t)d.getValue();
     uint8_t sz = d.getNBytes();
-    if (!d.getMode() == IncrementDecrementDialog::Increase) {
+    if (d.getMode() == IncrementDecrementDialog::Decrease) {
         value *= -1;
     }
     RzCoreLocked core(Core());
     rz_core_write_value_inc_at(core, getLocationAddress(), value, sz);
+    refresh();
+}
+
+void HexWidget::w_writeBytes()
+{
+    if (!ioModesController.prepareForWriting()) {
+        return;
+    }
+    bool ok = false;
+
+    int size = INT_MAX;
+    if (!selection.isEmpty() && selection.size() <= INT_MAX) {
+        size = static_cast<int>(selection.size());
+    }
+
+    QInputDialog d;
+    d.setInputMode(QInputDialog::InputMode::TextInput);
+    QByteArray bytes = d.getText(this, tr("Write hex bytes"), tr("Hex byte string:"),
+                                 QLineEdit::Normal, "", &ok)
+                               .toUtf8();
+    const int offset = bytes.startsWith("\\x") ? 2 : 0;
+    const int incr = offset + 2;
+    const int bytes_size = qMin(bytes.size() / incr, size);
+    if (!ok || !bytes_size) {
+        return;
+    }
+    uint8_t *buf = (uint8_t *)malloc(static_cast<size_t>(bytes_size));
+    if (!buf) {
+        return;
+    }
+    for (int i = 0, j = 0, sz = bytes.size(); i < sz; i += incr, j++) {
+        buf[j] = static_cast<uint8_t>(bytes.mid(i + offset, 2).toInt(nullptr, 16));
+    }
+    RzCoreLocked core(Core());
+    rz_core_write_at(core, getLocationAddress(), buf, bytes_size);
+    free(buf);
     refresh();
 }
 

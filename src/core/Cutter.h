@@ -3,15 +3,16 @@
 
 #include "core/CutterCommon.h"
 #include "core/CutterDescriptions.h"
+#include "core/CutterJson.h"
 #include "common/BasicInstructionHighlighter.h"
 
 #include <QMap>
 #include <QMenu>
 #include <QDebug>
 #include <QObject>
+#include <QSharedPointer>
 #include <QStringList>
 #include <QMessageBox>
-#include <QJsonDocument>
 #include <QErrorMessage>
 #include <QMutex>
 #include <QDir>
@@ -23,6 +24,7 @@ class CutterCore;
 class Decompiler;
 class RizinTask;
 class RizinCmdTask;
+class RizinFunctionTask;
 class RizinTaskDialog;
 
 #include "common/BasicBlockHighlighter.h"
@@ -33,6 +35,29 @@ class RizinTaskDialog;
 #define Core() (CutterCore::instance())
 
 class RzCoreLocked;
+
+struct CUTTER_EXPORT AddrRefs
+{
+    RVA addr;
+    QString mapname;
+    QString section;
+    QString reg;
+    QString fcn;
+    QString type;
+    QString asm_op;
+    QString perms;
+    ut64 value;
+    bool has_value;
+    QString string;
+    QSharedPointer<AddrRefs> ref;
+};
+
+struct CUTTER_EXPORT RegisterRef
+{
+    ut64 value;
+    AddrRefs ref;
+    QString name;
+};
 
 class CUTTER_EXPORT CutterCore : public QObject
 {
@@ -75,11 +100,18 @@ public:
      *       Once you have setup connections you can start the task with task->startTask()
      *       If you want to seek to an address, you should use CutterCore::seek.
      */
-    bool asyncCmd(const char *str, QSharedPointer<RizinCmdTask> &task);
-    bool asyncCmd(const QString &str, QSharedPointer<RizinCmdTask> &task)
+    bool asyncCmd(const char *str, QSharedPointer<RizinTask> &task);
+    bool asyncCmd(const QString &str, QSharedPointer<RizinTask> &task)
     {
         return asyncCmd(str.toUtf8().constData(), task);
     }
+
+    /**
+     * @brief send a task to Rizin
+     * @param fcn the task you want to execute
+     * @return execute successful?
+     */
+    bool asyncTask(std::function<void *(RzCore *)> fcn, QSharedPointer<RizinTask> &task);
 
     /**
      * @brief Execute a Rizin command \a cmd.  By nature, the API
@@ -124,16 +156,25 @@ public:
         seekSilent(oldOffset);
     }
 
-    QJsonDocument cmdj(const char *str);
-    QJsonDocument cmdj(const QString &str) { return cmdj(str.toUtf8().constData()); }
-    QJsonDocument cmdjAt(const char *str, RVA address);
+    void *returnAtSeek(std::function<void *()> fn, RVA address)
+    {
+        RVA oldOffset = getOffset();
+        seekSilent(address);
+        void *ret = fn();
+        seekSilent(oldOffset);
+        return ret;
+    }
+
+    CutterJson cmdj(const char *str);
+    CutterJson cmdj(const QString &str) { return cmdj(str.toUtf8().constData()); }
+    CutterJson cmdjAt(const char *str, RVA address);
     QStringList cmdList(const char *str)
     {
         return cmd(str).split(QLatin1Char('\n'), CUTTER_QT_SKIP_EMPTY_PARTS);
     }
     QStringList cmdList(const QString &str) { return cmdList(str.toUtf8().constData()); }
     QString cmdTask(const QString &str);
-    QJsonDocument cmdjTask(const QString &str);
+    CutterJson cmdjTask(const QString &str);
     /**
      * @brief send a command to Rizin and check for ESIL errors
      * @param command the command you want to execute
@@ -151,16 +192,16 @@ public:
      *       Once you have setup connections you can start the task with task->startTask()
      *       If you want to seek to an address, you should use CutterCore::seek.
      */
-    bool asyncCmdEsil(const char *command, QSharedPointer<RizinCmdTask> &task);
-    bool asyncCmdEsil(const QString &command, QSharedPointer<RizinCmdTask> &task)
+    bool asyncCmdEsil(const char *command, QSharedPointer<RizinTask> &task);
+    bool asyncCmdEsil(const QString &command, QSharedPointer<RizinTask> &task)
     {
         return asyncCmdEsil(command.toUtf8().constData(), task);
     }
     QString getRizinVersionReadable();
     QString getVersionInformation();
 
-    QJsonDocument parseJson(const char *res, const char *cmd = nullptr);
-    QJsonDocument parseJson(const char *res, const QString &cmd = QString())
+    CutterJson parseJson(char *res, const char *cmd = nullptr);
+    CutterJson parseJson(char *res, const QString &cmd = QString())
     {
         return parseJson(res, cmd.isNull() ? nullptr : cmd.toLocal8Bit().constData());
     }
@@ -376,8 +417,8 @@ public:
     bool sdbSet(QString path, QString key, QString val);
 
     /* Debug */
-    QJsonDocument getRegistersInfo();
-    QJsonDocument getRegisterValues();
+    CutterJson getRegistersInfo();
+    CutterJson getRegisterValues();
     QString getRegisterName(QString registerRole);
     RVA getProgramCounterValue();
     void setRegister(QString regName, QString regValue);
@@ -391,32 +432,26 @@ public:
      * @param size number of bytes to scan
      * @param depth telescoping depth
      */
-    QList<QJsonObject> getStack(int size = 0x100, int depth = 6);
+    QList<AddrRefs> getStack(int size = 0x100, int depth = 6);
     /**
      * @brief Recursively dereferences pointers starting at the specified address
      *        up to a given depth
      * @param addr telescoping addr
      * @param depth telescoping depth
      */
-    QJsonObject getAddrRefs(RVA addr, int depth);
+    AddrRefs getAddrRefs(RVA addr, int depth);
     /**
      * @brief return a RefDescription with a formatted ref string and configured colors
      * @param ref the "ref" JSON node from getAddrRefs
      */
-    RefDescription formatRefDesc(QJsonObject ref);
+    RefDescription formatRefDesc(const AddrRefs &ref);
     /**
      * @brief Get a list of a given process's threads
      * @param pid The pid of the process, -1 for the currently debugged process
-     * @return JSON object result of dptj
+     * @return List of ProcessDescription
      */
-    QJsonDocument getProcessThreads(int pid);
-    /**
-     * @brief Get a list of a given process's child processes
-     * @param pid The pid of the process, -1 for the currently debugged process
-     * @return JSON object result of dptj
-     */
-    QJsonDocument getChildProcesses(int pid);
-    QJsonDocument getBacktrace();
+    QList<ProcessDescription> getProcessThreads(int pid);
+    CutterJson getBacktrace();
     /**
      * @brief Get a list of heap chunks
      * Uses RZ_API rz_heap_chunks_list to get vector of chunks
@@ -469,7 +504,7 @@ public:
     void continueBackDebug();
     void continueUntilCall();
     void continueUntilSyscall();
-    void continueUntilDebug(QString offset);
+    void continueUntilDebug(ut64 offset);
     void stepDebug();
     void stepOverDebug();
     void stepOutDebug();
@@ -532,10 +567,9 @@ public:
     bool registerDecompiler(Decompiler *decompiler);
 
     RVA getOffsetJump(RVA addr);
-    QJsonDocument getFileInfo();
-    QJsonDocument getSignatureInfo();
-    QJsonDocument getFileVersionInfo();
-    QStringList getStats();
+    CutterJson getFileInfo();
+    CutterJson getSignatureInfo();
+    CutterJson getFileVersionInfo();
     void setGraphEmpty(bool empty);
     bool isGraphEmpty();
 
@@ -631,7 +665,7 @@ public:
      * @brief returns a list of reg values and their telescoped references
      * @param depth telescoping depth
      */
-    QList<QJsonObject> getRegisterRefs(int depth = 6);
+    QList<RegisterRef> getRegisterRefs(int depth = 6);
     QVector<RegisterRefValueDescription> getRegisterRefValues();
     QList<VariableDescription> getVariables(RVA at);
     /**
@@ -649,7 +683,7 @@ public:
     QList<XrefDescription> getXRefs(RVA addr, bool to, bool whole_function,
                                     const QString &filterType = QString());
 
-    QList<StringDescription> parseStringsJson(const QJsonDocument &doc);
+    QList<StringDescription> parseStringsJson(const CutterJson &doc);
 
     void handleREvent(int type, void *data);
 
@@ -687,6 +721,10 @@ public:
      * @brief Commit write cache to the file on disk.
      */
     void commitWriteCache();
+    /**
+     * @brief Reset write cache.
+     */
+    void resetWriteCache();
 
     /**
      * @brief Enable or disable Write mode. When the file is opened in write mode, any changes to it
@@ -791,7 +829,7 @@ private:
     bool iocache = false;
     BasicInstructionHighlighter biHighlighter;
 
-    QSharedPointer<RizinCmdTask> debugTask;
+    QSharedPointer<RizinTask> debugTask;
     RizinTaskDialog *debugTaskDialog;
 
     QVector<QString> getCutterRCFilePaths() const;
