@@ -476,6 +476,9 @@ private:
     QAction *actionItemBigEndian;
     QAction *actionHexPairs;
     QAction *actionCopy;
+    // Andy - New Code
+    QAction *actionPaste;
+    // Andy - New Code End
     QAction *actionCopyAddress;
     QAction *actionComment;
     QAction *actionDeleteComment;

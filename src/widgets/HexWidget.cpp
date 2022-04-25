@@ -115,6 +115,14 @@ HexWidget::HexWidget(QWidget *parent)
     actionCopy->setShortcut(QKeySequence::Copy);
     connect(actionCopy, &QAction::triggered, this, &HexWidget::copy);
 
+    // Andy - New Code
+    actionPaste = new QAction(tr("Paste"), this);
+    addAction(actionPaste);
+    actionPaste->setShortcutContext(Qt::ShortcutContext::WidgetWithChildrenShortcut);
+    actionPaste->setShortcut(QKeySequence::Paste);
+    connect(actionPaste, &QAction::triggered, this, &HexWidget::copy); // paste);
+    // Andy - New Code End
+
     actionCopyAddress = new QAction(tr("Copy address"), this);
     actionCopyAddress->setShortcutContext(Qt::ShortcutContext::WidgetWithChildrenShortcut);
     actionCopyAddress->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_C);
@@ -658,6 +666,9 @@ void HexWidget::contextMenuEvent(QContextMenuEvent *event)
     writeMenu->addActions(actionsWriteOther);
     menu->addSeparator();
     menu->addAction(actionCopy);
+    // Andy - New Code
+    menu->addAction(actionPaste);
+    // Andy - New Code End
     disableOutsideSelectionActions(mouseOutsideSelection);
     menu->addAction(actionCopyAddress);
     menu->addActions(this->actions());
@@ -702,6 +713,24 @@ void HexWidget::copy()
                                    .trimmed()); // TODO: copy in the format shown
     }
 }
+
+// Andy - New Code
+// void HexWidget::paste()
+//{
+//    if (!ioModesController.prepareForWriting()) {
+//        return;
+//    }
+//    bool ok = false;
+//    QInputDialog d;
+//    d.setInputMode(QInputDialog::InputMode::TextInput);
+//    QString str = d.getText(this, tr("Paste string"), tr("Paste:"), QLineEdit::Normal, "", &ok);
+//    if (ok && !str.isEmpty()) {
+//        RzCoreLocked core(Core());
+//        rz_core_write_string_at(core, getLocationAddress(), str.toUtf8().constData());
+//        refresh();
+//    }
+//}
+// Andy - New Code End
 
 void HexWidget::copyAddress()
 {
