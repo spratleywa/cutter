@@ -325,6 +325,9 @@ private slots:
     void w_writePascalString();
     void w_writeWideString();
     void w_writeCString();
+    // Andy - New Code - 220512
+    void paste();
+    // Andy - New Code End
 
 private:
     void updateItemLength();

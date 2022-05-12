@@ -120,7 +120,7 @@ HexWidget::HexWidget(QWidget *parent)
     addAction(actionPaste);
     actionPaste->setShortcutContext(Qt::ShortcutContext::WidgetWithChildrenShortcut);
     actionPaste->setShortcut(QKeySequence::Paste);
-    connect(actionPaste, &QAction::triggered, this, &HexWidget::copy); // paste);
+    connect(actionPaste, &QAction::triggered, this, &HexWidget::paste);
     // Andy - New Code End
 
     actionCopyAddress = new QAction(tr("Copy address"), this);
@@ -714,22 +714,23 @@ void HexWidget::copy()
     }
 }
 
-// Andy - New Code
-// void HexWidget::paste()
-//{
-//    if (!ioModesController.prepareForWriting()) {
-//        return;
-//    }
-//    bool ok = false;
+// Andy - New Code - 220512
+void HexWidget::paste()
+{
+   if (!ioModesController.prepareForWriting()) {
+       return;
+   }
+   QClipboard *clipboard = QApplication::clipboard();
+   bool ok = false;
 //    QInputDialog d;
 //    d.setInputMode(QInputDialog::InputMode::TextInput);
-//    QString str = d.getText(this, tr("Paste string"), tr("Paste:"), QLineEdit::Normal, "", &ok);
-//    if (ok && !str.isEmpty()) {
-//        RzCoreLocked core(Core());
-//        rz_core_write_string_at(core, getLocationAddress(), str.toUtf8().constData());
-//        refresh();
-//    }
-//}
+   QString str = d.getText(this, tr("Paste string"), tr("Paste:"), QLineEdit::Normal, "", &ok);
+   if (ok && !str.isEmpty()) {
+       RzCoreLocked core(Core());
+       rz_core_write_string_at(core, getLocationAddress(), str.toUtf8().constData());
+       refresh();
+   }
+}
 // Andy - New Code End
 
 void HexWidget::copyAddress()
